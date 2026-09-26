@@ -121,3 +121,22 @@ func TestMissingFilesMakeChecklistUnknown(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+func TestReviewExplanationUsesOnlyDecisiveChecks(t *testing.T) {
+	e := reviewEvidence("caution", .28)
+	e.Rules = append(e.Rules, model.Rule{ID: "custom", Title: "独自の確認項目", Tag: "custom", Priority: "high", SuggestAt: .75, CandidateAt: .35})
+	e.Outcomes[0].Values["u1__custom"] = .9
+	// A lower-priority suggestion and a high-priority candidate are not reasons for required.
+	e.Outcomes[0].Values["u1__behavior_change"] = .9
+	e.Outcomes[0].Values["u1__api_contract"] = .5
+	r := Aggregate(e, "jev-latest")
+	d := r.Files[0].Review
+	if d.Level != "required" || d.Basis != "priority_check" || len(d.Checks) != 1 || d.Checks[0] != "独自の確認項目" || *d.Judgments[0].Confidence != .28 {
+		t.Fatalf("%+v", d)
+	}
+	e.Files[0].PatchState = "unknown"
+	d = Aggregate(e, "jev-latest").Files[0].Review
+	if d.Basis != "incomplete" || len(d.Checks) != 0 {
+		t.Fatalf("wrong decisive reason: %+v", d)
+	}
+}

@@ -23,24 +23,34 @@ func reviewDecision(f model.File, fr model.FileResult, choices map[string]model.
 	}
 	switch {
 	case fr.Group == "manual":
+		d.Basis = "incomplete"
 		d.Level, d.Reason = "required", "解析できていない差分があります。人が内容を確認してください。"
 	case fr.Group == "first":
+		d.Basis = "priority_check"
 		d.Level, d.Reason = "required", "影響の大きい確認観点に該当します。対象の変更を確認してください。"
 	case required:
+		d.Basis = "ai_required"
 		d.Level, d.Reason = "required", "Jevが重点的な確認を必要と判断しました。対象の変更を確認してください。"
 	case fr.Group == "normal":
+		d.Basis = "attention_check"
 		d.Reason = "確認したい観点があります。関連する変更を確認してください。"
 	case len(d.Judgments) != len(f.Units) || len(d.Judgments) == 0:
+		d.Basis = "missing_assessment"
 		d.Reason = "確認の要否を判断した記録がありません。確認を省略せず、差分を確認してください。"
 	case fr.ContextPartial || len(f.Units) > 1:
+		d.Basis = "split_context"
 		d.Reason = "差分を分割して解析しています。変更同士のつながりを確認してください。"
 	case bodyOmitted:
+		d.Basis = "omitted_description"
 		d.Reason = "PRの説明を省いて解析しています。変更の意図と合わせて確認してください。"
 	case caution:
+		d.Basis = "ai_caution"
 		d.Reason = "Jevが確認を勧めています。変更の意図と影響を確認してください。"
 	case lowConfidence:
+		d.Basis = "low_confidence"
 		d.Reason = "Jevは不要を選びましたが、判定の確かさが基準に届かないため注意としています。"
 	default:
+		d.Basis = "skip_eligible"
 		d.Level, d.Reason = "unnecessary", "Jevが確認の省略候補と判断し、他の確認観点にも該当しません。"
 	}
 	return d

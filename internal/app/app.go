@@ -170,6 +170,7 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 		unknown := f.PatchState != "complete" || len(f.Units) == 0
 		high := false
 		attention := false
+		var priorityChecks, attentionChecks []string
 		for _, uid := range f.Units {
 			u, exists := unitByID[uid]
 			if !exists {
@@ -197,8 +198,10 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 					fr.Tags = appendUnique(fr.Tags, rule.Tag)
 					fr.Targets = appendTarget(fr.Targets, target(f, u))
 					attention = true
+					attentionChecks = appendUnique(attentionChecks, rule.Title)
 					if s.State == "suggested" && rule.Priority == "high" {
 						high = true
+						priorityChecks = appendUnique(priorityChecks, rule.Title)
 					}
 				}
 			}
@@ -218,6 +221,12 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 			fr.Reasons = append(fr.Reasons, "unknown")
 		}
 		fr.Review = reviewDecision(f, fr, choices, unitByID, e.BodyOmitted)
+		switch fr.Review.Basis {
+		case "priority_check":
+			fr.Review.Checks = priorityChecks
+		case "attention_check":
+			fr.Review.Checks = attentionChecks
+		}
 		for _, reason := range fr.Reasons {
 			r.Scope.Unanalyzed = append(r.Scope.Unanalyzed, model.Unanalyzed{Path: f.Path, Reason: reason})
 		}

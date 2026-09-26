@@ -20,6 +20,8 @@
 - 未解析は必須。高優先度の既存観点がsuggestedの場合、または1単位でもChoiceがrequiredの場合も必須とする。confidenceが低いrequiredも引き下げない。
 - 既存観点がcandidate以上、Choiceがcaution、confidenceが0.85未満、分割解析、PR本文省略、旧記録にChoiceがない場合は最低でも注意とする。
 - 残ったファイルだけを不要（詳細確認の省略候補）とする。0.85は未校正の初期方針で、正解率ではない。
+- HTMLでは「確認区分」「理由」「AIの見立て（参考）」を分け、確信度は参考の見立てに対する値だと明示する。確認区分と見立てが異なる場合は、どの条件を優先したかを併記する。ページ内の読み方ガイドと、実行時のチェック定義に基づく項目名を表示し、prjevの実装知識を前提としない。
+- `review.basis` と `review.checks` は既存の判定分岐と根拠の項目名を記録する表示用情報であり、判定条件・閾値・チェック内容は変更しない。
 - ファイルの最終区分とJevの元の区分を区別して表示する。複数単位のconfidenceは最低値を示し、元の値と行範囲を詳細に残す。Noulにconfidenceという意味を与えない。
 - 表示順は必須、注意、不要。HTMLとMarkdownでは不要を折りたたみ、ターミナルでは簡略表示する。観点・未解析理由は日本語で表示する。
 - `files[].review` に `level / reason / judgments` を追加し、各judgmentに元のChoice・confidence・probabilitiesと対象範囲を保存する。`review_policy` に方針のversionとskip閾値を含める。既存のschema version 1に対する追加フィールドとし、旧 `group` は保持する。

@@ -14,7 +14,71 @@ const confidenceHelp = "確信度（confidence）はJevの判定の迷いの少�
 type reviewFile struct {
 	Item                            model.FileResult
 	Level, Tone, Reason, Confidence string
+	Assessment                      aiAssessment
+	DecisionNote                    string
 }
+
+type aiAssessment struct {
+	Label, Confidence, ConfidenceLabel string
+}
+
+func assessment(js []model.ReviewJudgment) aiAssessment {
+	if len(js) == 0 {
+		return aiAssessment{Label: "見立てを取得できていません"}
+	}
+	choice, lowest, available := js[0].Choice, 1.0, true
+	for _, j := range js {
+		if choice != j.Choice {
+			choice = "mixed"
+		}
+		if j.Confidence == nil {
+			available = false
+		} else {
+			lowest = min(lowest, *j.Confidence)
+		}
+	}
+	labels := map[string]string{"required": "重点的な確認が必要", "caution": "確認を勧める", "unnecessary": "詳細確認を省略できそう", "mixed": "範囲によって見立てが異なる"}
+	a := aiAssessment{Label: labels[choice], Confidence: "未取得", ConfidenceLabel: "この見立ての確信度"}
+	if a.Label == "" {
+		a.Label = "見立てを取得できていません"
+	}
+	if len(js) > 1 {
+		a.ConfidenceLabel = "各範囲の確信度の最低値"
+	}
+	if available {
+		a.Confidence = percent(lowest)
+	}
+	return a
+}
+
+func decisionNote(f model.FileResult, level string) string {
+	differs := false
+	for _, j := range f.Review.Judgments {
+		differs = differs || j.Choice != level
+	}
+	if !differs {
+		return ""
+	}
+	switch f.Review.Basis {
+	case "priority_check":
+		return "重点確認項目への該当を優先し、確認区分を「必須」にしています。"
+	case "attention_check":
+		return "確認項目に該当するため、AIの見立てにかかわらず確認を勧めています。"
+	case "incomplete":
+		return "解析できなかった範囲も人が確認する必要があるため、確認区分は「必須」です。"
+	case "low_confidence":
+		return "省略できそうという見立ての確信度が基準に届かないため、確認区分は「注意」です。"
+	case "ai_required":
+		return "確認が必要という見立ての範囲があるため、ファイル全体の確認区分は「必須」です。"
+	case "split_context":
+		return "範囲ごとの見立てだけでは変更同士のつながりを判断できないため、確認を勧めています。"
+	case "omitted_description":
+		return "PRの説明を省いて解析したため、変更の意図と合わせた確認を勧めています。"
+	default:
+		return "確認項目や解析範囲の条件も合わせて、最終的な確認区分を決めています。"
+	}
+}
+
 type reviewGroup struct {
 	Level, Label, Description, Tone string
 	Files                           []reviewFile
@@ -50,7 +114,7 @@ func summarize(r model.Result) reviewSummary {
 			s.Unnecessary++
 			index = 2
 		}
-		s.Groups[index].Files = append(s.Groups[index].Files, reviewFile{Item: f, Level: level, Tone: s.Groups[index].Tone, Reason: reason, Confidence: confidenceSummary(f.Review.Judgments)})
+		s.Groups[index].Files = append(s.Groups[index].Files, reviewFile{Item: f, Level: level, Tone: s.Groups[index].Tone, Reason: reason, Confidence: confidenceSummary(f.Review.Judgments), Assessment: assessment(f.Review.Judgments), DecisionNote: decisionNote(f, level)})
 	}
 	return s
 }

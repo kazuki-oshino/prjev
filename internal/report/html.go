@@ -70,15 +70,15 @@ func renderHTML(r model.Result, view string) ([]byte, error) {
 		d.ChecklistMessage = "解析済み範囲では追加提案なし。未解析の差分があります"
 	}
 	t, err := template.New("report.html").Funcs(template.FuncMap{
-		"clean":             clean,
-		"tagLabel":          tagLabel,
-		"reasonLabel":       reasonLabel,
-		"reviewLabel":       reviewLabel,
-		"confidenceSummary": func(j model.ReviewJudgment) string { return confidenceSummary([]model.ReviewJudgment{j}) },
-		"confidenceHelp":    func() string { return confidenceHelp },
-		"label":             label,
-		"short":             short,
-		"targetRange":       targetRange,
+		"clean":           clean,
+		"tagLabel":        tagLabel,
+		"reasonLabel":     reasonLabel,
+		"reviewLabel":     reviewLabel,
+		"additionalCount": func(n int) int { return n - 1 },
+		"assessment":      func(j model.ReviewJudgment) aiAssessment { return assessment([]model.ReviewJudgment{j}) },
+		"label":           label,
+		"short":           short,
+		"targetRange":     targetRange,
 	}).ParseFS(htmlAssets, "report.html")
 	if err != nil {
 		return nil, err

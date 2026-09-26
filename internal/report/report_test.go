@@ -94,7 +94,7 @@ func TestReviewGuidanceAcrossFormats(t *testing.T) {
 				t.Fatal(err)
 			}
 			s := string(b)
-			for _, want := range []string{"必須", "注意", "不要", "58.0%", "Jev: 不要", "Jevから判定を取得できませんでした", "コードが正しい確率ではありません", "一覧を取得できなかった1ファイル", "基準に届かない"} {
+			for _, want := range []string{"必須", "注意", "不要", "58.0%", "Jevから判定を取得できませんでした", "コードが正しい確率ではありません", "一覧を取得できなかった1ファイル", "基準に届かない"} {
 				if !strings.Contains(s, want) {
 					t.Errorf("missing %q", want)
 				}
@@ -113,6 +113,69 @@ func TestReviewGuidanceAcrossFormats(t *testing.T) {
 	s := summarize(r)
 	if s.Required != 2 || s.Caution != 1 || s.Unnecessary != 1 || s.Missing != 1 {
 		t.Fatalf("%+v", s)
+	}
+}
+
+func TestHTMLSeparatesFinalDecisionFromAIConfidence(t *testing.T) {
+	c := .28
+	r := model.Result{Status: "complete", Files: []model.FileResult{{Path: "app.go", Group: "first", Review: model.ReviewDecision{
+		Level: "required", Basis: "priority_check", Reason: "重点確認項目に該当します。", Checks: []string{"独自の契約を確認", "別の確認項目"},
+		Judgments: []model.ReviewJudgment{{ChoiceAnswer: model.ChoiceAnswer{Choice: "caution", Confidence: &c}}},
+	}}}}
+	b, err := Render(r, "html", "files")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{"確認区分</span><strong", "必須</strong>", "AIの見立て（参考）", "確認を勧める", "この見立ての確信度", "28.0%", "重点確認項目への該当を優先", "独自の契約を確認", "ほか1項目", "別の確認項目", "最終的な確認区分の確信度ではなく"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(s, "Jev: 注意") {
+		t.Fatal("ambiguous confidence label remains")
+	}
+	if strings.Contains(s, "APIの互換性") {
+		t.Fatal("inferred a hard-coded check instead of using the supplied title")
+	}
+
+	// Old rendered results do not contain the new explanation metadata.
+	r.Files[0].Review.Basis, r.Files[0].Review.Checks = "", nil
+	b, err = Render(r, "html", "files")
+	if err != nil || !strings.Contains(string(b), "確認項目や解析範囲の条件も合わせて") {
+		t.Fatalf("old result: %s %v", b, err)
+	}
+}
+
+func TestHTMLAssessmentScopeAndDecisionNotes(t *testing.T) {
+	low, high := .2, .98
+	js := []model.ReviewJudgment{{ChoiceAnswer: model.ChoiceAnswer{Choice: "required", Confidence: &low}}, {ChoiceAnswer: model.ChoiceAnswer{Choice: "caution", Confidence: &high}}}
+	a := assessment(js)
+	if a.Label != "範囲によって見立てが異なる" || a.Confidence != "20.0%" || a.ConfidenceLabel != "各範囲の確信度の最低値" {
+		t.Fatalf("%+v", a)
+	}
+	if a := assessment(nil); a.Confidence != "" || a.Label != "見立てを取得できていません" {
+		t.Fatalf("%+v", a)
+	}
+	for _, tt := range []struct{ basis, choice, level, want string }{
+		{"incomplete", "unnecessary", "required", "解析できなかった範囲"},
+		{"low_confidence", "unnecessary", "caution", "確信度が基準に届かない"},
+		{"ai_required", "caution", "required", "確認が必要という見立ての範囲"},
+		{"ai_caution", "caution", "caution", ""},
+	} {
+		f := model.FileResult{Review: model.ReviewDecision{Basis: tt.basis, Judgments: []model.ReviewJudgment{{ChoiceAnswer: model.ChoiceAnswer{Choice: tt.choice}}}}}
+		got := decisionNote(f, tt.level)
+		if tt.want == "" && got != "" || tt.want != "" && !strings.Contains(got, tt.want) {
+			t.Errorf("basis=%s note=%s", tt.basis, got)
+		}
+	}
+}
+
+func TestHTMLCheckTitlesAreEscaped(t *testing.T) {
+	r := model.Result{Files: []model.FileResult{{Path: "a.go", Review: model.ReviewDecision{Level: "required", Checks: []string{`<script>do not execute</script>`}}}}}
+	b, err := Render(r, "html", "files")
+	if err != nil || strings.Contains(string(b), "<script>") || !strings.Contains(string(b), "&lt;script&gt;") {
+		t.Fatalf("%s %v", b, err)
 	}
 }
 

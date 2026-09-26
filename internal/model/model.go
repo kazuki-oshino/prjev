@@ -106,6 +106,9 @@ type ReviewDecision struct {
 	Level     string           `json:"level"`
 	Reason    string           `json:"reason"`
 	Judgments []ReviewJudgment `json:"judgments"`
+	// Presentation evidence from the branch that selected Level; not another judgment.
+	Basis  string   `json:"basis,omitempty"`
+	Checks []string `json:"checks,omitempty"`
 }
 type ReviewPolicy struct {
 	Version          int     `json:"version"`
