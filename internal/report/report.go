@@ -53,6 +53,9 @@ func Render(r model.Result, format, view string) ([]byte, error) {
 	if format == "json" {
 		return json.MarshalIndent(r, "", "  ")
 	}
+	if format == "html" {
+		return renderHTML(r, view)
+	}
 	if format != "terminal" && format != "markdown" {
 		return nil, fmt.Errorf("不明な出力形式: %s", format)
 	}

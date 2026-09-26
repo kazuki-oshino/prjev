@@ -148,7 +148,7 @@ func parse(args []string) (options, string, []string, error) {
 		view = pos[0]
 		pos = pos[1:]
 	}
-	if o.format != "terminal" && o.format != "markdown" && o.format != "json" {
+	if o.format != "terminal" && o.format != "markdown" && o.format != "json" && o.format != "html" {
 		return o, view, nil, fmt.Errorf("--formatが不正です")
 	}
 	if o.timeout <= 0 {

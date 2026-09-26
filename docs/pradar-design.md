@@ -39,7 +39,7 @@ Jevで各差分に該当する確認観点をまとめて判定
     ↓
 Goで集約・並べ替え
     ↓
-ターミナル / Markdown / JSON
+ターミナル / Markdown / JSON / HTML
 ```
 
 **Codex SDK・TypeScriptブリッジは初版では不要。GoとJevだけで完結させる。**
@@ -62,7 +62,7 @@ Jevに聞くのは「この差分は、定義済みの確認観点に該当す�
 - `gh`の既存認証を使う読み取り専用のPR取得。
 - 小〜中規模PRのテキスト差分に対するJevの一段判定。
 - ChecklistとRadarの同時出力、および片方だけの表示。
-- ターミナル、Markdown、JSONの出力。
+- ターミナル、Markdown、JSON、単一ファイルHTMLの出力。
 - ローカル設定による会社固有のチェック追加。
 - 入力不足、サイズ制限、API障害の明示。
 - 任意の記録ファイルと、APIを呼ばない再集計。
@@ -117,6 +117,10 @@ pradar files https://github.com/company/backend/pull/123
 pradar --format markdown --output ./report.md \
   https://github.com/company/backend/pull/123
 
+# ブラウザで読むHTML保存
+pradar --format html --output ./report.html \
+  https://github.com/company/backend/pull/123
+
 # JSONを標準出力へ
 pradar --format json https://github.com/company/backend/pull/123
 
@@ -138,7 +142,7 @@ pradar replay --format markdown ./.pradar/run-123.json
 
 | フラグ | 既定値 | 内容 |
 | --- | --- | --- |
-| `--format` | `terminal` | `terminal` / `markdown` / `json` |
+| `--format` | `terminal` | `terminal` / `markdown` / `json` / `html` |
 | `--output` | なし | 指定時は選んだ形式をファイルに保存。未指定ならstdout |
 | `--env-file` | `./.env` | 明示指定したファイルが読めない場合はエラー |
 | `--config` | なし | 信頼済みのローカルYAMLを明示指定 |
@@ -235,7 +239,7 @@ CLI
      ├─ Rule catalog
      ├─ Jev client（HTTPS）
      ├─ Aggregator
-     ├─ Renderer（terminal / Markdown / JSON）
+     ├─ Renderer（terminal / Markdown / JSON / HTML）
      └─ Optional recorder / replay
 ```
 
@@ -600,7 +604,7 @@ Jev照会: <実測回数>  入力tokens: <APIが返した場合のみ表示>
 この結果は差分からの確認候補です。バグ検出・テスト実行・マージ承認ではありません。
 ```
 
-Markdownも同じ構造とし、PR URL、head/base、解析範囲、Checklist、Radar、制約を含める。画面上の表現を変えても同じ正規化結果から生成する。
+MarkdownとHTMLも同じ構造とし、PR URL、head/base、解析範囲、Checklist、Radar、制約を含める。HTMLはCSSを埋め込んだ単一ファイルとし、スクリプトや外部アセットを読み込まない。画面上の表現を変えても同じ正規化結果から生成する。
 
 タイミングを分けて表示し、「JevのAPI時間」と「gh取得を含む全体時間」を混同しない。
 
@@ -707,7 +711,7 @@ internal/
   rules/        # 標準ルールと追加ルール検証
   jev/          # wire形式、HTTP、バッチ応答検証
   scan/         # 実行フロー・並列数・期限
-  report/       # 集約、terminal/Markdown/JSON
+  report/       # 集約、terminal/Markdown/JSON/HTML
   record/       # 任意記録とreplay
 examples/
   pradar.yaml
@@ -747,7 +751,7 @@ type Judge interface {
 - このパス除外だけで全秘密情報を検知できるわけではない。会社の外部API利用・データ送信ルールを前提条件にする。
 - 最初の外部送信前に、送信先・送る内容の概要をstderrへ表示する。認証済みであることを社内データ送信許可と解釈しない。
 - 生のAPIエラー本文・HTTPヘッダーをdebugログへ出さない。記録ファイルは機密資料になり得る。
-- ターミナル出力の制御文字・ANSI/OSCを無害化し、Markdownでは表・コードフェンス・HTMLを適切にエスケープする。
+- ターミナル出力の制御文字・ANSI/OSCを無害化し、Markdownでは表・コードフェンス・HTMLを適切にエスケープする。HTMLではPR由来の文字列をテンプレートでエスケープし、PRリンクのURLを検証する。
 - PR内のパスをそのままローカル出力パスに使わない。PR由来のURLへ追加アクセスしない。
 
 ---
@@ -795,7 +799,7 @@ type Judge interface {
 
 ### Step 1: APIなしで表示まで通す
 
-CLI、設定、dotenv、ダミーPR入力、固定判定、3出力形式を作る。終了コードとpartialの表示を先に決める。
+CLI、設定、dotenv、ダミーPR入力、固定判定、4出力形式を作る。終了コードとpartialの表示を先に決める。
 
 ### Step 2: `gh`取得を接続する
 

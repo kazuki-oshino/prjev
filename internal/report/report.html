@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>PR #{{.Result.PR.Number}} レビューレポート | pradar</title>
+  <style>{{.CSS}}</style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero-top">
+        <span class="brand"><span class="brand-mark" aria-hidden="true">◉</span> pradar <span class="brand-sub">/ review report</span></span>
+        <span class="status status-{{.StatusTone}}">{{.StatusLabel}}</span>
+      </div>
+      <p class="eyebrow">PULL REQUEST #{{.Result.PR.Number}}</p>
+      <h1>{{clean .Result.PR.Title}}</h1>
+      <div class="hero-meta">
+        {{if .Result.PR.Repository}}<span class="repo">{{clean .Result.PR.Repository}}</span>{{end}}
+        {{if .PRURL}}<a class="pr-link" href="{{.PRURL}}" target="_blank" rel="noopener noreferrer">GitHubでPRを見る <span aria-hidden="true">↗</span></a>{{end}}
+      </div>
+      <p class="commit-line">base <code>{{short .Result.PR.BaseSHA}}</code><span aria-hidden="true">→</span> head <code>{{short .Result.PR.HeadSHA}}</code></p>
+    </header>
+
+    <main>
+      <section class="overview" aria-label="分析の概要">
+        <div class="stat"><span class="stat-label">差分の解析</span><strong><span>{{.Result.Scope.AnalyzedFiles}}</span><span class="stat-divider"> / </span><span>{{.Result.PR.ChangedFiles}}</span></strong><span class="stat-help">ファイル</span></div>
+        <div class="stat"><span class="stat-label">未解析</span><strong>{{.UnanalyzedCount}}</strong><span class="stat-help">ファイル</span></div>
+        <div class="stat"><span class="stat-label">確認を推奨</span><strong>{{.SuggestedCount}}</strong><span class="stat-help">観点</span></div>
+        <div class="stat"><span class="stat-label">追加候補</span><strong>{{.CandidateCount}}</strong><span class="stat-help">観点</span></div>
+      </section>
+
+      {{if eq .StatusTone "partial"}}
+      <aside class="notice notice-partial" role="note"><span class="notice-icon" aria-hidden="true">!</span><div><strong>未解析の範囲があります</strong><p>以下の提案は解析できた差分に基づきます。未解析の箇所にも確認事項がある可能性があります。</p></div></aside>
+      {{end}}
+
+      {{if .ShowChecklist}}
+      <section class="content-section" id="checklist" aria-labelledby="checklist-title">
+        <div class="section-head"><div><p class="section-kicker">01 / REVIEW CHECKLIST</p><h2 id="checklist-title">確認する観点</h2><p class="section-description">差分から追加で確認したい内容。該当ファイルと行範囲を併記しています。</p></div><span class="section-count">{{len .Checklist}} 件</span></div>
+        {{if .Checklist}}
+        <div class="checklist-list">
+          {{range .Checklist}}
+          <article class="check-item tone-{{.Tone}}">
+            <div class="check-main"><span class="badge tone-{{.Tone}}">{{label .Item.State}}</span><h3>{{clean .Item.Title}}</h3>{{if .Item.Unknown}}<span class="subtle-flag">未解析範囲あり</span>{{end}}</div>
+            {{if .Item.Targets}}<div class="targets">{{range .Item.Targets}}<div class="target"><span class="target-path">{{clean .Path}}</span>{{if targetRange .}}<span class="target-range">{{clean (targetRange .)}}</span>{{end}}</div>{{end}}</div>{{end}}
+          </article>
+          {{end}}
+        </div>
+        {{else}}<div class="empty-state"><span aria-hidden="true">○</span><p>{{.ChecklistMessage}}</p></div>{{end}}
+      </section>
+      {{end}}
+
+      {{if .ShowFiles}}
+      <section class="content-section" id="radar" aria-labelledby="radar-title">
+        <div class="section-head"><div><p class="section-kicker">02 / REVIEW RADAR</p><h2 id="radar-title">ファイルを読む順番</h2><p class="section-description">要手動確認、先に確認、通常確認の順です。ファイルを開くと対象範囲を確認できます。</p></div><span class="section-count">{{len .Files}} ファイル</span></div>
+        {{if .Files}}<div class="file-list">
+          {{range .Files}}
+          <details class="file-card tone-{{.Tone}}">
+            <summary><span class="file-number">{{printf "%02d" .Number}}</span><span class="file-title"><span class="file-path">{{clean .Item.Path}}</span>{{if .Item.Tags}}<span class="file-tags">{{range .Item.Tags}}<span class="tag">{{clean .}}</span>{{end}}</span>{{end}}</span><span class="badge tone-{{.Tone}}">{{label .Item.Group}}</span><span class="chevron" aria-hidden="true"></span></summary>
+            <div class="file-detail">
+              {{if .Item.PreviousPath}}<p class="file-note">変更前: <code>{{clean .Item.PreviousPath}}</code></p>{{end}}
+              {{if .Item.ContextPartial}}<p class="file-note">ファイル内の文脈は分割して解析</p>{{end}}
+              {{range .Item.Reasons}}<p class="file-note file-reason">未解析理由: {{clean .}}</p>{{end}}
+              {{if .Item.Targets}}<p class="detail-label">対象差分</p><div class="targets">{{range .Item.Targets}}<div class="target"><span class="target-path">{{clean .Path}}</span>{{if .HunkIDs}}<span class="target-hunks">{{range .HunkIDs}}{{clean .}} {{end}}</span>{{end}}{{if targetRange .}}<span class="target-range">{{clean (targetRange .)}}</span>{{end}}</div>{{end}}</div>{{end}}
+              {{if and (not .Item.Targets) (not .Item.Reasons) (not .Item.ContextPartial)}}<p class="file-note">この差分から追加提案なし</p>{{end}}
+            </div>
+          </details>
+          {{end}}
+        </div>{{else}}<div class="empty-state"><span aria-hidden="true">○</span><p>表示できるファイルがありません</p></div>{{end}}
+      </section>
+      {{end}}
+
+      {{if .Result.Warnings}}<section class="warnings" aria-labelledby="warnings-title"><h2 id="warnings-title">注意事項</h2><ul>{{range .Result.Warnings}}<li>{{clean .}}</li>{{end}}</ul></section>{{end}}
+      <footer class="footer"><p>この結果は差分からの確認候補です。バグ検出・テスト実行・マージ承認ではありません。</p><p>GitHub {{.Result.Metrics.GitHubMS}}ms <span aria-hidden="true">·</span> Jev {{.Result.Metrics.JevMS}}ms <span aria-hidden="true">·</span> ローカル {{.Result.Metrics.LocalMS}}ms <span aria-hidden="true">·</span> 全体 {{.Result.Metrics.TotalMS}}ms <span aria-hidden="true">·</span> Jev照会 {{.Result.Metrics.HTTPAttempts}}回{{with .Result.Metrics.Usage}} <span aria-hidden="true">·</span> 入力tokens {{.InputTokens}}{{end}}</p></footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +25,17 @@ func TestReplayNoExternalDependencies(t *testing.T) {
 	code := run([]string{"replay", "--format", "json", path}, &out, &err)
 	if code != 2 || !strings.Contains(out.String(), `"status": "partial"`) || err.Len() != 0 {
 		t.Fatalf("code=%d out=%s err=%s", code, out.String(), err.String())
+	}
+	htmlPath := filepath.Join(t.TempDir(), "report.html")
+	out.Reset()
+	err.Reset()
+	code = run([]string{"replay", "--format", "html", "--output", htmlPath, path}, &out, &err)
+	if code != 2 || out.Len() != 0 || err.Len() != 0 {
+		t.Fatalf("html code=%d out=%s err=%s", code, out.String(), err.String())
+	}
+	html, readErr := os.ReadFile(htmlPath)
+	if readErr != nil || !strings.Contains(string(html), "<!doctype html>") || !strings.Contains(string(html), "a.png") {
+		t.Fatalf("html output=%s err=%v", html, readErr)
 	}
 }
 func TestMissingKeyBeforeGitHub(t *testing.T) {

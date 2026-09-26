@@ -20,12 +20,15 @@ go build -o pradar ./cmd/pradar
 ```bash
 pradar checklist https://github.com/owner/repo/pull/123
 pradar files https://github.com/owner/repo/pull/123
+pradar --format html --output ./.pradar/report.html https://github.com/owner/repo/pull/123
 pradar --format markdown --output ./.pradar/report.md https://github.com/owner/repo/pull/123
 pradar --format json https://github.com/owner/repo/pull/123
 pradar --config ./examples/pradar.yaml --env-file ./local.env https://github.com/owner/repo/pull/123
 pradar --record ./.pradar/run.json https://github.com/owner/repo/pull/123
 pradar replay --format markdown ./.pradar/run.json
 ```
+
+HTMLはCSSを含む単一ファイルです。上記のコマンドで保存した`./.pradar/report.html`をブラウザで開けます。`checklist`、`files`、`replay`でも`--format html`を利用できます。
 
 フラグは位置引数より前に指定します。`replay`は保存した判定値を再集計し、GitHub・Jevへ接続しません。`--output`と`--record`は既存ファイルを上書きしません。記録にはPR本文と差分が含まれるため、保存先の扱いに注意してください。
 
