@@ -34,8 +34,9 @@ func TestLiveWire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("live wire: %v", err)
 	}
-	if resp.Model == "" || resp.Usage == nil || resp.Answers["u0001__behavior_change"].Noul == nil {
+	if resp.Model == "" || resp.Usage == nil || resp.Answers["u0001__behavior_change"].Noul == nil || !ValidReviewAnswer(resp.Answers[ReviewQuestionID("u0001")].ChoiceAnswer) {
 		t.Fatalf("unexpected response structure")
 	}
-	t.Logf("model=%s input_tokens=%d", resp.Model, resp.Usage.InputTokens)
+	a := resp.Answers[ReviewQuestionID("u0001")]
+	t.Logf("model=%s input_tokens=%d review=%s confidence=%.4f", resp.Model, resp.Usage.InputTokens, a.Choice, *a.Confidence)
 }

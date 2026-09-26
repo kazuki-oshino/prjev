@@ -17,21 +17,22 @@ import (
 )
 
 type Evidence struct {
-	Budgets     map[string]int64 `json:"budgets"`
-	PR          model.PR         `json:"pr"`
-	Files       []model.File     `json:"files"`
-	Units       []model.Unit     `json:"units"`
-	Rules       []model.Rule     `json:"rules"`
-	Outcomes    []jev.Outcome    `json:"outcomes"`
-	Skipped     []string         `json:"skipped"`
-	Metrics     model.Metrics    `json:"metrics"`
-	Warnings    []string         `json:"warnings"`
-	BodyOmitted bool             `json:"body_omitted"`
+	ReviewPolicyVersion int              `json:"review_policy_version,omitempty"`
+	Budgets             map[string]int64 `json:"budgets"`
+	PR                  model.PR         `json:"pr"`
+	Files               []model.File     `json:"files"`
+	Units               []model.Unit     `json:"units"`
+	Rules               []model.Rule     `json:"rules"`
+	Outcomes            []jev.Outcome    `json:"outcomes"`
+	Skipped             []string         `json:"skipped"`
+	Metrics             model.Metrics    `json:"metrics"`
+	Warnings            []string         `json:"warnings"`
+	BodyOmitted         bool             `json:"body_omitted"`
 }
 
 func Scan(ctx context.Context, ref github.Ref, c config.Config, reader github.Reader, client *jev.Client, notice func(string)) (Evidence, error) {
 	start := time.Now()
-	e := Evidence{Rules: c.Rules, Outcomes: []jev.Outcome{}, Skipped: []string{}, Warnings: []string{}, Budgets: map[string]int64{
+	e := Evidence{ReviewPolicyVersion: 2, Rules: c.Rules, Outcomes: []jev.Outcome{}, Skipped: []string{}, Warnings: []string{}, Budgets: map[string]int64{
 		"max_files": 100, "gh_stdout_bytes": 8 << 20, "unit_patch_bytes": 12 << 10, "state_bytes": 24 << 10, "request_bytes": 64 << 10, "questions_per_request": 128, "max_batches": 12, "max_http_attempts": 24, "concurrency": int64(c.Concurrency), "request_timeout_ms": c.RequestTimeout.Milliseconds(),
 	}}
 	if deadline, ok := ctx.Deadline(); ok {
@@ -82,6 +83,10 @@ func Scan(ctx context.Context, ref github.Ref, c config.Config, reader github.Re
 func Aggregate(e Evidence, requestedModel string) model.Result {
 	r := model.Result{SchemaVersion: 1, ToolVersion: model.Version, PR: e.PR, RulesHash: rules.Hash(e.Rules), Warnings: append([]string{}, e.Warnings...)}
 	r.Model.Requested = requestedModel
+	r.ReviewPolicy = model.ReviewPolicy{Version: 1, SkipConfidenceAt: skipConfidenceAt}
+	if e.ReviewPolicyVersion == 2 {
+		r.ReviewPolicy = model.ReviewPolicy{Version: 2, SkipConfidenceAt: skipConfidenceAt, RequiredConfidenceAt: requiredConfidenceAt, RiskSuggestAt: rules.RiskSuggestAt, RiskCandidateAt: rules.RiskCandidateAt}
+	}
 	r.Model.Actual = []string{}
 	r.Scope = model.Scope{FetchedFiles: len(e.Files), AnalysisUnits: len(e.Units), Unanalyzed: []model.Unanalyzed{}, BodyOmitted: e.BodyOmitted}
 	r.Metrics = e.Metrics
@@ -91,6 +96,8 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 		r.ThresholdProfile = append(r.ThresholdProfile, model.RuleThreshold{ID: rule.ID, SuggestAt: rule.SuggestAt, CandidateAt: rule.CandidateAt})
 	}
 	values := map[string]float64{}
+	choices := map[string]model.ChoiceAnswer{}
+	reviewRequested := map[string]bool{}
 	models := map[string]bool{}
 	failed := map[string]string{}
 	var usage model.Usage
@@ -100,8 +107,22 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 			models[o.Model] = true
 			r.Model.Actual = append(r.Model.Actual, o.Model)
 		}
-		for k, v := range o.Values {
-			values[k] = v
+		for id, q := range o.Request.Questions {
+			if q.Type == "choice" {
+				reviewRequested[id] = true
+			}
+		}
+		if o.ErrorCode == "" {
+			for k, v := range o.Values {
+				if v >= 0 && v <= 1 {
+					values[k] = v
+				}
+			}
+			for k, v := range o.Choices {
+				if jev.ValidReviewAnswer(v) {
+					choices[k] = v
+				}
+			}
 		}
 		if o.ErrorCode != "" {
 			for id := range o.Request.Questions {
@@ -150,11 +171,28 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 	for _, f := range e.Files {
 		fileRuleRank[f.Path] = len(e.Rules)
 		fr := model.FileResult{Path: f.Path, PreviousPath: f.PreviousPath, Status: f.Status, Tags: []string{}, Targets: []model.Target{}, Reasons: append([]string{}, f.Reasons...)}
-		unknown := f.PatchState != "complete"
+		unknown := f.PatchState != "complete" || len(f.Units) == 0
 		high := false
 		attention := false
+		var priorityChecks, attentionChecks []string
 		for _, uid := range f.Units {
-			u := unitByID[uid]
+			u, exists := unitByID[uid]
+			if !exists {
+				unknown = true
+			}
+			qid := jev.ReviewQuestionID(uid)
+			if _, ok := choices[qid]; !ok && (reviewRequested[qid] || e.ReviewPolicyVersion == 2) {
+				unknown = true
+				fr.Reasons = appendUnique(fr.Reasons, "review_unavailable")
+			}
+			if e.ReviewPolicyVersion == 2 {
+				for _, risk := range rules.ReviewRisks() {
+					if _, ok := values[jev.RiskQuestionID(uid, risk.ID)]; !ok {
+						unknown = true
+						fr.Reasons = appendUnique(fr.Reasons, "risk_unavailable")
+					}
+				}
+			}
 			if u.FileContextPartial {
 				fr.ContextPartial = true
 			}
@@ -172,8 +210,10 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 					fr.Tags = appendUnique(fr.Tags, rule.Tag)
 					fr.Targets = appendTarget(fr.Targets, target(f, u))
 					attention = true
+					attentionChecks = appendUnique(attentionChecks, rule.Title)
 					if s.State == "suggested" && rule.Priority == "high" {
 						high = true
+						priorityChecks = appendUnique(priorityChecks, rule.Title)
 					}
 				}
 			}
@@ -189,23 +229,36 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 		}
 		if fr.Group != "manual" {
 			r.Scope.AnalyzedFiles++
+		} else if len(fr.Reasons) == 0 {
+			fr.Reasons = append(fr.Reasons, "unknown")
+		}
+		if e.ReviewPolicyVersion == 2 {
+			fr.Review = reviewDecisionV2(f, fr, choices, values, unitByID, e.BodyOmitted)
+		} else {
+			fr.Review = reviewDecision(f, fr, choices, unitByID, e.BodyOmitted)
+		}
+		switch fr.Review.Basis {
+		case "priority_check":
+			fr.Review.Checks = priorityChecks
+		case "attention_check":
+			fr.Review.Checks = attentionChecks
 		}
 		for _, reason := range fr.Reasons {
 			r.Scope.Unanalyzed = append(r.Scope.Unanalyzed, model.Unanalyzed{Path: f.Path, Reason: reason})
 		}
 		r.Files = append(r.Files, fr)
 	}
-	if e.PR.ChangedFiles > 0 && len(e.Files) == 0 {
+	if e.PR.ChangedFiles > len(e.Files) {
 		r.Scope.Unanalyzed = append(r.Scope.Unanalyzed, model.Unanalyzed{Path: "*", Reason: "metadata_only"})
 	}
 	if e.PR.ChangedFiles > 100 {
 		r.Scope.Unanalyzed = append(r.Scope.Unanalyzed, model.Unanalyzed{Path: "*", Reason: "file_limit_exceeded"})
 	}
-	order := map[string]int{"manual": 0, "first": 1, "normal": 2, "no_signal": 3}
+	order := map[string]int{"required": 0, "caution": 1, "unnecessary": 2}
 	sort.SliceStable(r.Files, func(i, j int) bool {
 		a, b := r.Files[i], r.Files[j]
-		if order[a.Group] != order[b.Group] {
-			return order[a.Group] < order[b.Group]
+		if order[a.Review.Level] != order[b.Review.Level] {
+			return order[a.Review.Level] < order[b.Review.Level]
 		}
 		if fileRuleRank[a.Path] != fileRuleRank[b.Path] {
 			return fileRuleRank[a.Path] < fileRuleRank[b.Path]
@@ -214,7 +267,7 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 	})
 	for _, rule := range e.Rules {
 		item := model.ChecklistItem{RuleID: rule.ID, Title: rule.Title, State: "no_signal", Targets: []model.Target{}}
-		if e.PR.ChangedFiles > 100 || (e.PR.ChangedFiles > 0 && len(e.Files) == 0) {
+		if e.PR.ChangedFiles > len(e.Files) {
 			item.Unknown = true
 		}
 		for _, f := range e.Files {
