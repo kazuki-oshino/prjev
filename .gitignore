@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 .pradar/
+/output/
 .DS_Store
 node_modules/
 

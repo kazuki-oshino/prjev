@@ -114,11 +114,11 @@ pradar checklist https://github.com/company/backend/pull/123
 pradar files https://github.com/company/backend/pull/123
 
 # Markdown保存
-pradar --format markdown --output ./report.md \
+pradar --format markdown --output ./.pradar/report.md \
   https://github.com/company/backend/pull/123
 
 # ブラウザで読むHTML保存
-pradar --format html --output ./report.html \
+pradar --format html --output ./.pradar/report.html \
   https://github.com/company/backend/pull/123
 
 # JSONを標準出力へ
