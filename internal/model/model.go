@@ -109,10 +109,22 @@ type ReviewDecision struct {
 	// Presentation evidence from the branch that selected Level; not another judgment.
 	Basis  string   `json:"basis,omitempty"`
 	Checks []string `json:"checks,omitempty"`
+	// Independent Noul judgments, retained with their original values and ranges.
+	Risks []ReviewRisk `json:"risks,omitempty"`
+}
+type ReviewRisk struct {
+	UnitID string  `json:"unit_id"`
+	ID     string  `json:"id"`
+	Title  string  `json:"title"`
+	Value  float64 `json:"value"`
+	Target Target  `json:"target"`
 }
 type ReviewPolicy struct {
-	Version          int     `json:"version"`
-	SkipConfidenceAt float64 `json:"skip_confidence_at"`
+	Version              int     `json:"version"`
+	SkipConfidenceAt     float64 `json:"skip_confidence_at"`
+	RequiredConfidenceAt float64 `json:"required_confidence_at,omitempty"`
+	RiskSuggestAt        float64 `json:"risk_suggest_at,omitempty"`
+	RiskCandidateAt      float64 `json:"risk_candidate_at,omitempty"`
 }
 type Scope struct {
 	FetchedFiles  int          `json:"fetched_files"`

@@ -34,8 +34,8 @@
       <details class="reading-guide">
         <summary>確認区分・AIの見立て・確信度の読み方</summary>
         <dl>
-          <div><dt>確認区分</dt><dd>レビューで取る行動の目安です。確認項目への該当、解析できた範囲、AIの見立てを合わせて決めています。「必須」は重点的に確認、「注意」は関連する変更を確認、「不要」は詳細確認を省略する候補です。</dd></div>
-          <div><dt>AIの見立て（参考）</dt><dd>差分を読んだAI（Jev）が、確認の必要性をどう見ているかを示します。確認項目や未解析の範囲を優先するため、最終的な確認区分と異なることがあります。</dd></div>
+          <div><dt>確認区分</dt><dd>レビューで取る行動の目安です。{{if eq .Result.ReviewPolicy.Version 2}}重大な影響やテストの検証が失われる可能性、解析範囲、AIの見立てと確信度を合わせて決めます。チェック項目への該当だけでは必須になりません。{{else}}確認項目への該当、解析できた範囲、AIの見立てを合わせて決めています。{{end}}「必須」は重点的に確認、「注意」は関連する変更を確認、「不要」は詳細確認を省略する候補です。</dd></div>
+          <div><dt>AIの見立て（参考）</dt><dd>差分を読んだAI（Jev）が、確認の必要性をどう見ているかを示します。{{if eq .Result.ReviewPolicy.Version 2}}別に判定した重大な影響や検証の弱体化、未解析の範囲、見立ての確信度も考慮するため、{{else}}確認項目や未解析の範囲を優先するため、{{end}}最終的な確認区分と異なることがあります。</dd></div>
           <div><dt>見立ての確信度</dt><dd>AIがその見立てをどれだけ明確に選んだかの目安です。最終的な確認区分の確信度ではなく、コードが正しい確率でもありません。複数の範囲に分けた場合は最低値を表示します。</dd></div>
         </dl>
         <p>「不要」も確認の省略候補であり、問題がないという保証ではありません。</p>
@@ -54,7 +54,7 @@
             {{if eq .Level "unnecessary"}}
             <details class="skip-group">
               <summary><span class="badge tone-quiet">不要</span><span>{{len .Files}}ファイルは詳細確認の省略候補です</span><span class="skip-action">一覧を開く</span></summary>
-              <p class="section-description">AIの見立てと確認項目、解析範囲の条件を合わせて、省略候補としたファイルです。必要なときに確認できます。</p>
+              <p class="section-description">AIの見立てと判定の根拠、解析範囲の条件を合わせて、省略候補としたファイルです。必要なときに確認できます。</p>
               {{template "file-list" .}}
             </details>
             {{else}}
@@ -109,6 +109,7 @@
       {{if .Item.Tags}}<p class="detail-label">この差分に関連する観点</p><div class="file-tags">{{range .Item.Tags}}<span class="tag">{{clean (tagLabel .)}}</span>{{end}}</div>{{end}}
       {{range .Item.Reasons}}<p class="file-note file-reason">{{clean (reasonLabel .)}}</p>{{end}}
       {{if .Item.ContextPartial}}<p class="file-note">差分を分割して解析しました。変更同士のつながりは確認が必要です。</p>{{end}}
+      {{if .Item.Review.Risks}}<p class="detail-label">影響とテストの検証についての判定</p><p class="file-note">数値は各項目に該当するというAIの見立てです。影響の大きさや、不具合がある確率ではありません。</p><div class="targets">{{range .Item.Review.Risks}}<div class="target"><span>{{clean .Title}}</span><span>該当の見立て {{percent .Value}}</span><span class="target-range">{{clean (targetRange .Target)}}</span></div>{{end}}</div>{{end}}
       {{if .Item.Targets}}<p class="detail-label">確認したい箇所</p><div class="targets">{{range .Item.Targets}}<div class="target"><span class="target-range">{{clean (targetRange .)}}</span></div>{{end}}</div>{{end}}
       {{if .Item.Review.Judgments}}<p class="detail-label">範囲ごとのAIの見立て（参考）</p><p class="file-note">確信度は、AIがここに示す見立てをどれだけ明確に選んだかの目安です。確認区分の確信度や、コードが正しい確率ではありません。</p><div class="targets">{{range .Item.Review.Judgments}}<div class="target">{{with assessment .}}<span>{{.Label}}</span><span>この見立ての確信度 {{.Confidence}}</span>{{end}}<span class="target-range">{{clean (targetRange .Target)}}</span></div>{{end}}</div>{{end}}
     </div>

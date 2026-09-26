@@ -68,6 +68,9 @@ func Read(path string) (Record, error) {
 	if r.RecordSchemaVersion != 1 || r.Result.SchemaVersion != 1 || r.Evidence.Rules == nil {
 		return r, fmt.Errorf("記録形式が不正です")
 	}
+	if r.Evidence.ReviewPolicyVersion < 0 || r.Evidence.ReviewPolicyVersion > 2 {
+		return r, fmt.Errorf("対応していない判定方針のversionです")
+	}
 	return r, nil
 }
 

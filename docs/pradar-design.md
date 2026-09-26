@@ -12,21 +12,22 @@
 ## 2026-09-26: 人が読む範囲を絞るための拡張
 
 従来の「読む順番」から、ファイルごとの「確認の要否」を先頭に表示する。
-以下は本書の初版設計に優先する追加仕様で、後続のv0.1記述は既存のChecklist・group・予算などの背景として残す。
+以下は判定方針version 2の仕様で、本書の初版設計に優先する。後続のv0.1記述は既存のChecklist・group・予算などの背景として残す。
 
-- 既存のNoul質問に加え、解析単位ごとに `required / caution / unnecessary` のChoiceを同じリクエストへ追加する。
+- 標準8観点のNoulに加え、解析単位ごとに `runtime_impact`（重大な実影響）、`verification_loss`（重要な検証の弱体化）のNoulと、`required / caution / unnecessary` のChoiceを同じリクエストへ追加する。標準構成は11質問。
 - Choiceは実際の変更内容に基づく人の確認要否を判断する。欠陥の有無を保証せず、情報不足は `caution` へ送る。ファイル種別のみで省略しない。
 - 応答の種類、選択肢、confidenceの有無と範囲、確率分布のキー・範囲・合計・選択結果との整合を検証する。不正なバッチの値は採用しない。
-- 未解析は必須。高優先度の既存観点がsuggestedの場合、または1単位でもChoiceがrequiredの場合も必須とする。confidenceが低いrequiredも引き下げない。
-- 既存観点がcandidate以上、Choiceがcaution、confidenceが0.85未満、分割解析、PR本文省略、旧記録にChoiceがない場合は最低でも注意とする。
-- 残ったファイルだけを不要（詳細確認の省略候補）とする。0.85は未校正の初期方針で、正解率ではない。
+- 未解析・判定欠落は必須。新しい2種の影響判定のいずれかが0.75以上、または1単位でもChoiceがrequiredかつconfidence 0.85以上の場合も必須。確認観点のpriorityや該当だけでは最終区分を引き上げない。
+- 影響判定が0.35以上、Choiceがcaution、requiredだがconfidenceが0.85未満、分割解析、PR本文省略の場合は最低でも注意。低確信度のrequiredと明確な重大影響を区別する。
+- 残ったファイルのChoiceがunnecessaryかつconfidence 0.85以上の場合だけ不要にする。機械的変更に加え、既存保証を弱めない単純なテスト追加・fixture更新も、文脈から影響が限定できる場合は省略候補。閾値は未校正の初期方針で、正解率ではない。
 - HTMLでは「確認区分」「理由」「AIの見立て（参考）」を分け、確信度は参考の見立てに対する値だと明示する。確認区分と見立てが異なる場合は、どの条件を優先したかを併記する。ページ内の読み方ガイドと、実行時のチェック定義に基づく項目名を表示し、prjevの実装知識を前提としない。
-- `review.basis` と `review.checks` は既存の判定分岐と根拠の項目名を記録する表示用情報であり、判定条件・閾値・チェック内容は変更しない。
+- `review.basis` と `review.checks` は判定分岐と決め手になった項目名を記録する。`review.risks` に元の影響判定値・種類・対象範囲を残し、HTML詳細でも確認できる。Noulは該当の見立てとして表示し、影響の大きさや不具合の確率とは説明しない。
 - ファイルの最終区分とJevの元の区分を区別して表示する。複数単位のconfidenceは最低値を示し、元の値と行範囲を詳細に残す。Noulにconfidenceという意味を与えない。
 - 表示順は必須、注意、不要。HTMLとMarkdownでは不要を折りたたみ、ターミナルでは簡略表示する。観点・未解析理由は日本語で表示する。
-- `files[].review` に `level / reason / judgments` を追加し、各judgmentに元のChoice・confidence・probabilitiesと対象範囲を保存する。`review_policy` に方針のversionとskip閾値を含める。既存のschema version 1に対する追加フィールドとし、旧 `group` は保持する。
-- 記録の `outcomes[].choices` に元のChoice応答を保存する。旧記録のreplayも可能だが、Choiceを推測せず、不要への分類もしない。
-- 質問数・リクエストサイズの既存予算には追加Choiceも含む。入力超過による分割後もNoulとChoiceを一緒に再送する。
+- `files[].review` に `level / reason / judgments` を追加し、各judgmentに元のChoice・confidence・probabilitiesと対象範囲を保存する。`review_policy` に方針version、必須・省略のconfidence閾値、影響判定の閾値を含める。既存のschema version 1に対する追加フィールドとし、旧 `group` は保持する。
+- 記録の `outcomes[].choices` に元のChoice応答、`values` にNoul応答を保存する。`evidence.review_policy_version` が2なら新方針、省略または1なら旧方針でreplayする。未対応versionは読み込みを拒否する。旧記録のChoiceや影響判定を推測で補わず、外部再照会もしない。
+- 質問数・リクエストサイズの既存予算には影響判定とChoiceも含む。対象を `units[index].patch` と `units[index].path` で明示し、入力超過による分割後はindexを付け直して全質問を再送する。
+- 変更行を判断対象、周辺行を実行文脈とする。全8観点と影響判定にテスト・mockの該当条件を個別定義する。本体とテストで共有される実装、実サービスへの副作用、テスト以外に置かれた検証補助やCIの弱体化も評価対象にする。ファイル名だけの判定はしない。
 
 confidenceの意味とHTTP契約は[TypeSafe Confidence](https://docs.typesafe.ai/confidence)と[API reference](https://docs.typesafe.ai/api)に従う。
 閾値の妥当性と確認時間の削減効果は、実PRの人手レビュー結果と比較して評価する。

@@ -193,6 +193,28 @@ func TestConfidenceShowsRawChoiceAndLowestValue(t *testing.T) {
 	}
 }
 
+func TestHTMLExplainsIndependentRiskAndUncertainPriority(t *testing.T) {
+	c := .28
+	r := model.Result{Status: "complete", ReviewPolicy: model.ReviewPolicy{Version: 2}, Files: []model.FileResult{{Path: "sample_test.go", Review: model.ReviewDecision{
+		Level: "caution", Basis: "uncertain_priority", Reason: "重点確認の見立てが不確かなため注意です。",
+		Judgments: []model.ReviewJudgment{{ChoiceAnswer: model.ChoiceAnswer{Choice: "required", Confidence: &c}}},
+		Risks:     []model.ReviewRisk{{Title: "<独自の影響>", Value: .2, Target: model.Target{NewRanges: []string{"L10-L15"}}}},
+	}}}}
+	b, err := Render(r, "html", "scan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{"チェック項目への該当だけでは必須になりません", "重点確認の見立てが不確かなため注意です。", "該当の見立て 20.0%", "&lt;独自の影響&gt;", "L10-L15"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	if strings.Contains(s, "<独自の影響>") || strings.Contains(s, "重点確認項目への該当を優先し") {
+		t.Fatal("wrong explanation or unescaped risk title")
+	}
+}
+
 func TestLegacyNoSignalIsNotUnnecessary(t *testing.T) {
 	s := summarize(model.Result{Files: []model.FileResult{{Path: "old.go", Group: "no_signal"}}})
 	if s.Unnecessary != 0 || s.Caution != 1 || s.Groups[1].Files[0].Confidence != "Jevの確信度: 未取得" {

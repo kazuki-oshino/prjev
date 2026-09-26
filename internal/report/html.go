@@ -74,6 +74,7 @@ func renderHTML(r model.Result, view string) ([]byte, error) {
 		"tagLabel":        tagLabel,
 		"reasonLabel":     reasonLabel,
 		"reviewLabel":     reviewLabel,
+		"percent":         percent,
 		"additionalCount": func(n int) int { return n - 1 },
 		"assessment":      func(j model.ReviewJudgment) aiAssessment { return assessment([]model.ReviewJudgment{j}) },
 		"label":           label,

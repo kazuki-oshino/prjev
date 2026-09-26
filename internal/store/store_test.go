@@ -1,10 +1,25 @@
 package store
 
 import (
+	"github.com/kazuki-oshino/prjev/internal/app"
+	"github.com/kazuki-oshino/prjev/internal/model"
+	"github.com/kazuki-oshino/prjev/internal/rules"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestReadRejectsUnknownReviewPolicy(t *testing.T) {
+	e := app.Evidence{ReviewPolicyVersion: 3, Rules: rules.Standard()}
+	r := Record{RecordSchemaVersion: 1, Evidence: e, Result: model.Result{SchemaVersion: 1}}
+	p := filepath.Join(t.TempDir(), "future.json")
+	if err := Save(p, r); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(p); err == nil {
+		t.Fatal("unknown policy silently reinterpreted")
+	}
+}
 
 func TestAtomicNoOverwriteAndPermissions(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested")

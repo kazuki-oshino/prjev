@@ -17,21 +17,22 @@ import (
 )
 
 type Evidence struct {
-	Budgets     map[string]int64 `json:"budgets"`
-	PR          model.PR         `json:"pr"`
-	Files       []model.File     `json:"files"`
-	Units       []model.Unit     `json:"units"`
-	Rules       []model.Rule     `json:"rules"`
-	Outcomes    []jev.Outcome    `json:"outcomes"`
-	Skipped     []string         `json:"skipped"`
-	Metrics     model.Metrics    `json:"metrics"`
-	Warnings    []string         `json:"warnings"`
-	BodyOmitted bool             `json:"body_omitted"`
+	ReviewPolicyVersion int              `json:"review_policy_version,omitempty"`
+	Budgets             map[string]int64 `json:"budgets"`
+	PR                  model.PR         `json:"pr"`
+	Files               []model.File     `json:"files"`
+	Units               []model.Unit     `json:"units"`
+	Rules               []model.Rule     `json:"rules"`
+	Outcomes            []jev.Outcome    `json:"outcomes"`
+	Skipped             []string         `json:"skipped"`
+	Metrics             model.Metrics    `json:"metrics"`
+	Warnings            []string         `json:"warnings"`
+	BodyOmitted         bool             `json:"body_omitted"`
 }
 
 func Scan(ctx context.Context, ref github.Ref, c config.Config, reader github.Reader, client *jev.Client, notice func(string)) (Evidence, error) {
 	start := time.Now()
-	e := Evidence{Rules: c.Rules, Outcomes: []jev.Outcome{}, Skipped: []string{}, Warnings: []string{}, Budgets: map[string]int64{
+	e := Evidence{ReviewPolicyVersion: 2, Rules: c.Rules, Outcomes: []jev.Outcome{}, Skipped: []string{}, Warnings: []string{}, Budgets: map[string]int64{
 		"max_files": 100, "gh_stdout_bytes": 8 << 20, "unit_patch_bytes": 12 << 10, "state_bytes": 24 << 10, "request_bytes": 64 << 10, "questions_per_request": 128, "max_batches": 12, "max_http_attempts": 24, "concurrency": int64(c.Concurrency), "request_timeout_ms": c.RequestTimeout.Milliseconds(),
 	}}
 	if deadline, ok := ctx.Deadline(); ok {
@@ -83,6 +84,9 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 	r := model.Result{SchemaVersion: 1, ToolVersion: model.Version, PR: e.PR, RulesHash: rules.Hash(e.Rules), Warnings: append([]string{}, e.Warnings...)}
 	r.Model.Requested = requestedModel
 	r.ReviewPolicy = model.ReviewPolicy{Version: 1, SkipConfidenceAt: skipConfidenceAt}
+	if e.ReviewPolicyVersion == 2 {
+		r.ReviewPolicy = model.ReviewPolicy{Version: 2, SkipConfidenceAt: skipConfidenceAt, RequiredConfidenceAt: requiredConfidenceAt, RiskSuggestAt: rules.RiskSuggestAt, RiskCandidateAt: rules.RiskCandidateAt}
+	}
 	r.Model.Actual = []string{}
 	r.Scope = model.Scope{FetchedFiles: len(e.Files), AnalysisUnits: len(e.Units), Unanalyzed: []model.Unanalyzed{}, BodyOmitted: e.BodyOmitted}
 	r.Metrics = e.Metrics
@@ -177,9 +181,17 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 				unknown = true
 			}
 			qid := jev.ReviewQuestionID(uid)
-			if _, ok := choices[qid]; !ok && reviewRequested[qid] {
+			if _, ok := choices[qid]; !ok && (reviewRequested[qid] || e.ReviewPolicyVersion == 2) {
 				unknown = true
 				fr.Reasons = appendUnique(fr.Reasons, "review_unavailable")
+			}
+			if e.ReviewPolicyVersion == 2 {
+				for _, risk := range rules.ReviewRisks() {
+					if _, ok := values[jev.RiskQuestionID(uid, risk.ID)]; !ok {
+						unknown = true
+						fr.Reasons = appendUnique(fr.Reasons, "risk_unavailable")
+					}
+				}
 			}
 			if u.FileContextPartial {
 				fr.ContextPartial = true
@@ -220,7 +232,11 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 		} else if len(fr.Reasons) == 0 {
 			fr.Reasons = append(fr.Reasons, "unknown")
 		}
-		fr.Review = reviewDecision(f, fr, choices, unitByID, e.BodyOmitted)
+		if e.ReviewPolicyVersion == 2 {
+			fr.Review = reviewDecisionV2(f, fr, choices, values, unitByID, e.BodyOmitted)
+		} else {
+			fr.Review = reviewDecision(f, fr, choices, unitByID, e.BodyOmitted)
+		}
 		switch fr.Review.Basis {
 		case "priority_check":
 			fr.Review.Checks = priorityChecks

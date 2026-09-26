@@ -34,7 +34,7 @@ func TestClientValidatesAllAnswers(t *testing.T) {
 		if v["state"] == nil {
 			t.Fatal("missing state")
 		}
-		return response(200, `{"model":"jev-1","answers":{"u1__behavior":{"type":"noul","noul":0.8},"u1___review":{"type":"choice","choice":"caution","confidence":0.7,"probabilities":{"required":0.1,"caution":0.85,"unnecessary":0.05}}},"usage":{"input_tokens":10,"output_tokens":1}}`), nil
+		return response(200, `{"model":"jev-1","answers":{"u1__behavior":{"type":"noul","noul":0.8},"u1___risk_runtime_impact":{"type":"noul","noul":0.1},"u1___risk_verification_loss":{"type":"noul","noul":0.1},"u1___review":{"type":"choice","choice":"caution","confidence":0.7,"probabilities":{"required":0.1,"caution":0.85,"unnecessary":0.05}}},"usage":{"input_tokens":10,"output_tokens":1}}`), nil
 	})
 	out, e := c.one(context.Background(), request)
 	if e != nil || out.Model != "jev-1" {
@@ -79,7 +79,7 @@ func TestChoiceValidationAndPersistence(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := New("test", time.Second)
 			c.HTTP.Transport = roundTrip(func(*http.Request) (*http.Response, error) {
-				return response(200, `{"model":"jev-test","answers":{"u1___review":`+tt.answer+`},"usage":{"input_tokens":1,"output_tokens":1}}`), nil
+				return response(200, `{"model":"jev-test","answers":{"u1___risk_runtime_impact":{"type":"noul","noul":0.1},"u1___risk_verification_loss":{"type":"noul","noul":0.1},"u1___review":`+tt.answer+`},"usage":{"input_tokens":1,"output_tokens":1}}`), nil
 			})
 			out := c.Run(context.Background(), []Batch{{ID: "b1", Units: []model.Unit{{ID: "u1"}}, Request: req}}, 1)[0]
 			if (out.ErrorCode == "") != tt.valid {
@@ -99,7 +99,7 @@ func TestMixedBatchSplitKeepsChoiceQuestions(t *testing.T) {
 	units := []model.Unit{{ID: "u1", Path: "a.go"}, {ID: "u2", Path: "b.go"}}
 	rs := []model.Rule{{ID: "review", Instructions: "change?", Criteria: map[string]string{"true": "yes", "false": "no"}}}
 	req := MakeRequest(model.PR{}, units, rs, "jev-latest")
-	if len(req.Questions) != 4 {
+	if len(req.Questions) != 8 {
 		t.Fatal("review rule collided with triage")
 	}
 	c := New("test", time.Second)
@@ -112,10 +112,18 @@ func TestMixedBatchSplitKeepsChoiceQuestions(t *testing.T) {
 			return response(413, `{}`), nil
 		}
 		id := wire.State.Units[0].ID
-		if len(wire.Questions) != 2 || wire.Questions[ReviewQuestionID(id)].Type != "choice" {
+		if len(wire.Questions) != 4 || wire.Questions[ReviewQuestionID(id)].Type != "choice" {
 			t.Fatal("lost choice on split")
 		}
 		answers := map[string]any{id + "__review": map[string]any{"type": "noul", "noul": .1}, ReviewQuestionID(id): map[string]any{"type": "choice", "choice": "unnecessary", "confidence": .9, "probabilities": map[string]float64{"required": .01, "caution": .01, "unnecessary": .98}}}
+		for qid, q := range wire.Questions {
+			if !strings.HasPrefix(q.Instructions, unitScope(0)) || strings.Contains(q.Instructions, "`units[1]") {
+				t.Fatalf("stale unit reference after split: %s", q.Instructions)
+			}
+			if q.Type == "noul" {
+				answers[qid] = map[string]any{"type": "noul", "noul": .1}
+			}
+		}
 		b, _ := json.Marshal(map[string]any{"model": "jev-test", "answers": answers, "usage": model.Usage{InputTokens: 1}})
 		return response(200, string(b)), nil
 	})
@@ -124,7 +132,7 @@ func TestMixedBatchSplitKeepsChoiceQuestions(t *testing.T) {
 		t.Fatalf("%+v", out)
 	}
 	for _, o := range out {
-		if o.ErrorCode != "" || len(o.Choices) != 1 || len(o.Values) != 1 {
+		if o.ErrorCode != "" || len(o.Choices) != 1 || len(o.Values) != 3 {
 			t.Fatalf("%+v", o)
 		}
 	}
@@ -140,7 +148,7 @@ func TestPlanIncludesReviewQuestionInBudget(t *testing.T) {
 		t.Fatalf("batches=%d skipped=%d", len(batches), len(skipped))
 	}
 	for _, b := range batches {
-		if len(b.Request.Questions) > 128 || len(b.Request.Questions) != 2*len(b.Units) {
+		if len(b.Request.Questions) > 128 || len(b.Request.Questions) != 4*len(b.Units) {
 			t.Fatal("question budget bypassed")
 		}
 	}

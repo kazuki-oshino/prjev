@@ -60,6 +60,8 @@ func decisionNote(f model.FileResult, level string) string {
 		return ""
 	}
 	switch f.Review.Basis {
+	case "risk_signal", "risk_candidate", "uncertain_priority":
+		return f.Review.Reason
 	case "priority_check":
 		return "重点確認項目への該当を優先し、確認区分を「必須」にしています。"
 	case "attention_check":
@@ -175,6 +177,7 @@ func reasonLabel(s string) string {
 		return "取得した差分が不完全なため解析できませんでした"
 	}
 	labels := map[string]string{"api_error": "Jevから判定を取得できませんでした", "input_exceeded": "差分が解析できる大きさを超えています", "authentication": "Jevの認証に失敗しました", "rate_limited": "Jevの利用上限に達しました", "timeout": "解析が制限時間内に終わりませんでした", "budget_exceeded": "今回の解析量の上限を超えています", "unknown": "差分の判定を取得できませんでした", "review_unavailable": "確認の要否を判定できませんでした"}
+	labels["risk_unavailable"] = "重大な影響やテストの検証について判定を取得できませんでした"
 	if v, ok := labels[s]; ok {
 		return v
 	}
