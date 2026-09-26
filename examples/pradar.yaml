@@ -1,0 +1,18 @@
+version: 1
+jev:
+  model: jev-latest
+  concurrency: 3
+  request_timeout: 8s
+extra_checks:
+  - id: payment_integration
+    title: 決済サービスとの結合試験を確認
+    tag: payment
+    priority: high
+    instructions: >-
+      この差分は外部決済サービスとの注文・取消・会計連携で、要求・応答、送信順序、再送を変更しているか。
+      名前が登場するだけ、ログ文言だけでは該当しない。
+    criteria:
+      "true": 変更差分から連携動作への影響が読み取れる。
+      "false": その影響を示す記述が提示された差分にはない。
+    suggest_at: 0.75
+    candidate_at: 0.35
