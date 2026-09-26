@@ -14,14 +14,14 @@ var idRE = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 func Standard() []model.Rule {
 	definitions := []struct{ id, title, tag, priority, question string }{
-		{"behavior_change", "変更後の振る舞いとテスト観点を確認", "behavior", "normal", "Does the changed code alter conditions, calculations, or state transitions beyond naming or formatting?"},
-		{"external_integration", "外部連携・結合試験を確認", "integration", "high", "Does the changed code alter external I/O request content, send conditions, ordering, or response handling?"},
-		{"persistence_change", "データ更新とトランザクションを確認", "persistence", "high", "Does the changed code alter persisted state, writes, deletes, or transaction behavior?"},
-		{"api_contract", "API互換性と利用側への影響を確認", "contract", "high", "Does the changed code alter an externally exposed request, response, schema, or API contract?"},
-		{"error_recovery", "異常時・再実行時の挙動を確認", "recovery", "high", "Does the changed code alter error handling, retries, timeouts, or recovery behavior?"},
-		{"test_guarantee", "テスト名・目的とアサーションを確認", "test-contract", "normal", "Does the changed test alter an important verification or suggest a mismatch between its claimed behavior and assertions?"},
-		{"docs_impact", "関連する説明・手順の更新要否を確認", "docs-impact", "normal", "Does the changed behavior alter a user or developer facing contract, setting, or procedure that may need explanation?"},
-		{"general_attention", "その他の振る舞い変更を確認", "review", "normal", "Does the changed code show a substantive behavior change worth manual review, including beyond the named categories?"},
+		{"behavior_change", "動作の変更と、それを確かめるテストを確認", "behavior", "normal", "Does the changed code alter conditions, calculations, or state transitions beyond naming or formatting?"},
+		{"external_integration", "外部サービスとのやり取りを確認", "integration", "high", "Does the changed code alter external I/O request content, send conditions, ordering, or response handling?"},
+		{"persistence_change", "データの保存・削除が意図どおりか確認", "persistence", "high", "Does the changed code alter persisted state, writes, deletes, or transaction behavior?"},
+		{"api_contract", "APIの変更が利用側に与える影響を確認", "contract", "high", "Does the changed code alter an externally exposed request, response, schema, or API contract?"},
+		{"error_recovery", "失敗したときや、やり直したときの動作を確認", "recovery", "high", "Does the changed code alter error handling, retries, timeouts, or recovery behavior?"},
+		{"test_guarantee", "テストが意図した動作を確かめているか確認", "test-contract", "normal", "Does the changed test alter an important verification or suggest a mismatch between its claimed behavior and assertions?"},
+		{"docs_impact", "関連する説明や手順も更新する必要があるか確認", "docs-impact", "normal", "Does the changed behavior alter a user or developer facing contract, setting, or procedure that may need explanation?"},
+		{"general_attention", "その他の動作の変更を確認", "review", "normal", "Does the changed code show a substantive behavior change worth manual review, including beyond the named categories?"},
 	}
 	out := make([]model.Rule, 0, len(definitions))
 	for _, d := range definitions {

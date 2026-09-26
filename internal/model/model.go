@@ -80,14 +80,36 @@ type Target struct {
 	NewRanges []string `json:"new_ranges,omitempty"`
 }
 type FileResult struct {
-	Path           string   `json:"path"`
-	PreviousPath   string   `json:"previous_path,omitempty"`
-	Status         string   `json:"status"`
-	Group          string   `json:"group"`
-	ContextPartial bool     `json:"file_context_partial"`
-	Tags           []string `json:"tags"`
-	Targets        []Target `json:"targets"`
-	Reasons        []string `json:"reasons,omitempty"`
+	Path           string         `json:"path"`
+	PreviousPath   string         `json:"previous_path,omitempty"`
+	Status         string         `json:"status"`
+	Group          string         `json:"group"`
+	ContextPartial bool           `json:"file_context_partial"`
+	Tags           []string       `json:"tags"`
+	Targets        []Target       `json:"targets"`
+	Reasons        []string       `json:"reasons,omitempty"`
+	Review         ReviewDecision `json:"review"`
+}
+
+// ChoiceAnswer retains Jev's confidence, not a probability of bug-free code.
+type ChoiceAnswer struct {
+	Choice        string             `json:"choice"`
+	Confidence    *float64           `json:"confidence"`
+	Probabilities map[string]float64 `json:"probabilities"`
+}
+type ReviewJudgment struct {
+	UnitID string `json:"unit_id"`
+	ChoiceAnswer
+	Target Target `json:"target"`
+}
+type ReviewDecision struct {
+	Level     string           `json:"level"`
+	Reason    string           `json:"reason"`
+	Judgments []ReviewJudgment `json:"judgments"`
+}
+type ReviewPolicy struct {
+	Version          int     `json:"version"`
+	SkipConfidenceAt float64 `json:"skip_confidence_at"`
 }
 type Scope struct {
 	FetchedFiles  int          `json:"fetched_files"`
@@ -123,6 +145,7 @@ type Result struct {
 	} `json:"model"`
 	RulesHash        string          `json:"rules_hash"`
 	ThresholdProfile []RuleThreshold `json:"threshold_profile"`
+	ReviewPolicy     ReviewPolicy    `json:"review_policy"`
 	Scope            Scope           `json:"scope"`
 	Checklist        []ChecklistItem `json:"checklist"`
 	Files            []FileResult    `json:"files"`

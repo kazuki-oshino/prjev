@@ -17,12 +17,6 @@ type htmlChecklistItem struct {
 	Tone string
 }
 
-type htmlFileItem struct {
-	Item   model.FileResult
-	Tone   string
-	Number int
-}
-
 type htmlReport struct {
 	Result           model.Result
 	CSS              template.CSS
@@ -30,12 +24,10 @@ type htmlReport struct {
 	StatusLabel      string
 	StatusTone       string
 	UnanalyzedCount  int
-	SuggestedCount   int
-	CandidateCount   int
+	Review           reviewSummary
 	ShowChecklist    bool
 	ShowFiles        bool
 	Checklist        []htmlChecklistItem
-	Files            []htmlFileItem
 	ChecklistMessage string
 }
 
@@ -54,6 +46,7 @@ func renderHTML(r model.Result, view string) ([]byte, error) {
 	}
 	d := htmlReport{
 		Result:          r,
+		Review:          summarize(r),
 		CSS:             template.CSS(css), // 埋め込んだ固定CSSのみを渡す。
 		PRURL:           safePRURL(r.PR.URL),
 		StatusLabel:     "解析完了",
@@ -67,12 +60,6 @@ func renderHTML(r model.Result, view string) ([]byte, error) {
 		d.StatusTone = "partial"
 	}
 	for _, item := range r.Checklist {
-		switch item.State {
-		case "suggested":
-			d.SuggestedCount++
-		case "candidate":
-			d.CandidateCount++
-		}
 		if item.State != "no_signal" {
 			d.Checklist = append(d.Checklist, htmlChecklistItem{Item: item, Tone: htmlTone(item.State)})
 		}
@@ -82,14 +69,16 @@ func renderHTML(r model.Result, view string) ([]byte, error) {
 	} else {
 		d.ChecklistMessage = "解析済み範囲では追加提案なし。未解析の差分があります"
 	}
-	for i, file := range r.Files {
-		d.Files = append(d.Files, htmlFileItem{Item: file, Tone: htmlTone(file.Group), Number: i + 1})
-	}
 	t, err := template.New("report.html").Funcs(template.FuncMap{
-		"clean":       clean,
-		"label":       label,
-		"short":       short,
-		"targetRange": targetRange,
+		"clean":             clean,
+		"tagLabel":          tagLabel,
+		"reasonLabel":       reasonLabel,
+		"reviewLabel":       reviewLabel,
+		"confidenceSummary": func(j model.ReviewJudgment) string { return confidenceSummary([]model.ReviewJudgment{j}) },
+		"confidenceHelp":    func() string { return confidenceHelp },
+		"label":             label,
+		"short":             short,
+		"targetRange":       targetRange,
 	}).ParseFS(htmlAssets, "report.html")
 	if err != nil {
 		return nil, err

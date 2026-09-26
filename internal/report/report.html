@@ -11,7 +11,7 @@
   <div class="page">
     <header class="hero">
       <div class="hero-top">
-        <span class="brand"><span class="brand-mark" aria-hidden="true">◉</span> pradar <span class="brand-sub">/ review report</span></span>
+        <span class="brand"><span class="brand-mark" aria-hidden="true">◉</span> pradar <span class="brand-sub">/ レビューの確認ガイド</span></span>
         <span class="status status-{{.StatusTone}}">{{.StatusLabel}}</span>
       </div>
       <p class="eyebrow">PULL REQUEST #{{.Result.PR.Number}}</p>
@@ -24,20 +24,42 @@
     </header>
 
     <main>
-      <section class="overview" aria-label="分析の概要">
-        <div class="stat"><span class="stat-label">差分の解析</span><strong><span>{{.Result.Scope.AnalyzedFiles}}</span><span class="stat-divider"> / </span><span>{{.Result.PR.ChangedFiles}}</span></strong><span class="stat-help">ファイル</span></div>
-        <div class="stat"><span class="stat-label">未解析</span><strong>{{.UnanalyzedCount}}</strong><span class="stat-help">ファイル</span></div>
-        <div class="stat"><span class="stat-label">確認を推奨</span><strong>{{.SuggestedCount}}</strong><span class="stat-help">観点</span></div>
-        <div class="stat"><span class="stat-label">追加候補</span><strong>{{.CandidateCount}}</strong><span class="stat-help">観点</span></div>
+      <section class="overview" aria-label="人の確認の要否">
+        <div class="stat stat-required"><span class="stat-label">必須</span><strong>{{.Review.Required}}<small> ファイル</small></strong><span class="stat-help">重点的に確認する</span></div>
+        <div class="stat stat-caution"><span class="stat-label">注意</span><strong>{{.Review.Caution}}<small> ファイル</small></strong><span class="stat-help">関連する変更を確認する</span></div>
+        <div class="stat stat-unnecessary"><span class="stat-label">不要</span><strong>{{.Review.Unnecessary}}<small> ファイル</small></strong><span class="stat-help">詳細確認を省略する候補</span></div>
       </section>
+      <p class="coverage">{{.Result.PR.ChangedFiles}}ファイル中 {{.Result.Scope.AnalyzedFiles}}ファイルを解析 · 未解析 {{.UnanalyzedCount}}ファイル</p>
+      <p class="confidence-guide">{{confidenceHelp}}</p>
 
       {{if eq .StatusTone "partial"}}
       <aside class="notice notice-partial" role="note"><span class="notice-icon" aria-hidden="true">!</span><div><strong>未解析の範囲があります</strong><p>以下の提案は解析できた差分に基づきます。未解析の箇所にも確認事項がある可能性があります。</p></div></aside>
       {{end}}
 
+      {{if .ShowFiles}}
+      <section class="content-section" id="radar" aria-labelledby="radar-title">
+        <div class="section-head"><div><p class="section-kicker">まず、確認するファイルを絞る</p><h2 id="radar-title">ファイルごとの確認の要否</h2><p class="section-description">必須 → 注意の順に確認できます。各ファイルを開くと、確認する箇所や判定の詳細が見られます。</p></div></div>
+        {{if .Review.Missing}}<p class="missing-files">一覧を取得できなかった{{.Review.Missing}}ファイルは確認必須です。GitHubで確認してください。</p>{{end}}
+        {{range .Review.Groups}}
+          {{if .Files}}
+            {{if eq .Level "unnecessary"}}
+            <details class="skip-group">
+              <summary><span class="badge tone-quiet">不要</span><span>{{len .Files}}ファイルは詳細確認の省略候補です</span><span class="skip-action">一覧を開く</span></summary>
+              <p class="section-description">Jevが不要を選び、確信度と解析範囲の条件を満たしたファイルです。必要なときに確認できます。</p>
+              {{template "file-list" .}}
+            </details>
+            {{else}}
+            <div class="review-group"><h3 class="group-heading"><span class="badge tone-{{.Tone}}">{{.Label}}</span>{{.Description}}<span class="group-count">{{len .Files}}ファイル</span></h3>{{template "file-list" .}}</div>
+            {{end}}
+          {{end}}
+        {{end}}
+        {{if not .Result.Files}}<div class="empty-state"><p>表示できるファイルがありません</p></div>{{end}}
+      </section>
+      {{end}}
+
       {{if .ShowChecklist}}
       <section class="content-section" id="checklist" aria-labelledby="checklist-title">
-        <div class="section-head"><div><p class="section-kicker">01 / REVIEW CHECKLIST</p><h2 id="checklist-title">確認する観点</h2><p class="section-description">差分から追加で確認したい内容。該当ファイルと行範囲を併記しています。</p></div><span class="section-count">{{len .Checklist}} 件</span></div>
+        <div class="section-head"><div><p class="section-kicker">次に、具体的な確認内容を見る</p><h2 id="checklist-title">確認する観点</h2><p class="section-description">動作や影響を確かめるためのチェック項目です。該当ファイルと行番号から確認できます。</p></div><span class="section-count">{{len .Checklist}} 件</span></div>
         {{if .Checklist}}
         <div class="checklist-list">
           {{range .Checklist}}
@@ -51,29 +73,30 @@
       </section>
       {{end}}
 
-      {{if .ShowFiles}}
-      <section class="content-section" id="radar" aria-labelledby="radar-title">
-        <div class="section-head"><div><p class="section-kicker">02 / REVIEW RADAR</p><h2 id="radar-title">ファイルを読む順番</h2><p class="section-description">要手動確認、先に確認、通常確認の順です。ファイルを開くと対象範囲を確認できます。</p></div><span class="section-count">{{len .Files}} ファイル</span></div>
-        {{if .Files}}<div class="file-list">
-          {{range .Files}}
-          <details class="file-card tone-{{.Tone}}">
-            <summary><span class="file-number">{{printf "%02d" .Number}}</span><span class="file-title"><span class="file-path">{{clean .Item.Path}}</span>{{if .Item.Tags}}<span class="file-tags">{{range .Item.Tags}}<span class="tag">{{clean .}}</span>{{end}}</span>{{end}}</span><span class="badge tone-{{.Tone}}">{{label .Item.Group}}</span><span class="chevron" aria-hidden="true"></span></summary>
-            <div class="file-detail">
-              {{if .Item.PreviousPath}}<p class="file-note">変更前: <code>{{clean .Item.PreviousPath}}</code></p>{{end}}
-              {{if .Item.ContextPartial}}<p class="file-note">ファイル内の文脈は分割して解析</p>{{end}}
-              {{range .Item.Reasons}}<p class="file-note file-reason">未解析理由: {{clean .}}</p>{{end}}
-              {{if .Item.Targets}}<p class="detail-label">対象差分</p><div class="targets">{{range .Item.Targets}}<div class="target"><span class="target-path">{{clean .Path}}</span>{{if .HunkIDs}}<span class="target-hunks">{{range .HunkIDs}}{{clean .}} {{end}}</span>{{end}}{{if targetRange .}}<span class="target-range">{{clean (targetRange .)}}</span>{{end}}</div>{{end}}</div>{{end}}
-              {{if and (not .Item.Targets) (not .Item.Reasons) (not .Item.ContextPartial)}}<p class="file-note">この差分から追加提案なし</p>{{end}}
-            </div>
-          </details>
-          {{end}}
-        </div>{{else}}<div class="empty-state"><span aria-hidden="true">○</span><p>表示できるファイルがありません</p></div>{{end}}
-      </section>
-      {{end}}
-
       {{if .Result.Warnings}}<section class="warnings" aria-labelledby="warnings-title"><h2 id="warnings-title">注意事項</h2><ul>{{range .Result.Warnings}}<li>{{clean .}}</li>{{end}}</ul></section>{{end}}
-      <footer class="footer"><p>この結果は差分からの確認候補です。バグ検出・テスト実行・マージ承認ではありません。</p><p>GitHub {{.Result.Metrics.GitHubMS}}ms <span aria-hidden="true">·</span> Jev {{.Result.Metrics.JevMS}}ms <span aria-hidden="true">·</span> ローカル {{.Result.Metrics.LocalMS}}ms <span aria-hidden="true">·</span> 全体 {{.Result.Metrics.TotalMS}}ms <span aria-hidden="true">·</span> Jev照会 {{.Result.Metrics.HTTPAttempts}}回{{with .Result.Metrics.Usage}} <span aria-hidden="true">·</span> 入力tokens {{.InputTokens}}{{end}}</p></footer>
+      <footer class="footer"><p>この結果は差分に基づく確認の目安です。バグ検出・テスト実行・マージ承認ではありません。</p><p>GitHub {{.Result.Metrics.GitHubMS}}ms <span aria-hidden="true">·</span> Jev {{.Result.Metrics.JevMS}}ms <span aria-hidden="true">·</span> ローカル {{.Result.Metrics.LocalMS}}ms <span aria-hidden="true">·</span> 全体 {{.Result.Metrics.TotalMS}}ms <span aria-hidden="true">·</span> Jev照会 {{.Result.Metrics.HTTPAttempts}}回{{with .Result.Metrics.Usage}} <span aria-hidden="true">·</span> 入力tokens {{.InputTokens}}{{end}}</p></footer>
     </main>
   </div>
 </body>
 </html>
+
+{{define "file-list"}}
+<div class="file-list">
+  {{range .Files}}
+  <details class="file-card tone-{{.Tone}}">
+    <summary>
+      <span class="file-title"><span class="file-path">{{clean .Item.Path}}</span><span class="file-explanation">{{clean .Reason}}</span><span class="confidence">{{clean .Confidence}}</span></span>
+      <span class="chevron" aria-hidden="true"></span>
+    </summary>
+    <div class="file-detail">
+      {{if .Item.PreviousPath}}<p class="file-note">変更前: <code>{{clean .Item.PreviousPath}}</code></p>{{end}}
+      {{if .Item.Tags}}<div class="file-tags">{{range .Item.Tags}}<span class="tag">{{clean (tagLabel .)}}</span>{{end}}</div>{{end}}
+      {{range .Item.Reasons}}<p class="file-note file-reason">{{clean (reasonLabel .)}}</p>{{end}}
+      {{if .Item.ContextPartial}}<p class="file-note">差分を分割して解析しました。変更同士のつながりは確認が必要です。</p>{{end}}
+      {{if .Item.Targets}}<p class="detail-label">確認したい箇所</p><div class="targets">{{range .Item.Targets}}<div class="target"><span class="target-range">{{clean (targetRange .)}}</span></div>{{end}}</div>{{end}}
+      {{if .Item.Review.Judgments}}<p class="detail-label">Jevが返した判定</p><div class="targets">{{range .Item.Review.Judgments}}<div class="target"><span>{{confidenceSummary .}}</span><span class="target-range">{{clean (targetRange .Target)}}</span></div>{{end}}</div>{{end}}
+    </div>
+  </details>
+  {{end}}
+</div>
+{{end}}

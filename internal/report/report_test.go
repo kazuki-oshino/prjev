@@ -37,7 +37,7 @@ func TestHTMLShowsPartialResultAndEscapesPRText(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, want := range []string{"<!doctype html>", "一部未解析", "未解析の範囲があります", "確認する観点", "ファイルを読む順番", "a&lt;b&gt;.go", "L2-L4", "&lt;warning&gt;", "default-src 'none'"} {
+	for _, want := range []string{"<!doctype html>", "一部未解析", "未解析の範囲があります", "確認する観点", "ファイルごとの確認の要否", "a&lt;b&gt;.go", "L2-L4", "&lt;warning&gt;", "default-src 'none'"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -74,6 +74,78 @@ func TestHTMLPRLinkUsesCanonicalGitHubURL(t *testing.T) {
 	for _, raw := range []string{"javascript:alert(1)", "https://github.com.evil.test/o/r/pull/7", "https://github.com/o/r/issues/7"} {
 		if got := safePRURL(raw); got != "" {
 			t.Errorf("unsafe URL %q became %q", raw, got)
+		}
+	}
+}
+
+func TestReviewGuidanceAcrossFormats(t *testing.T) {
+	c := .58
+	r := model.Result{PR: model.PR{ChangedFiles: 4}, Status: "partial", Scope: model.Scope{AnalyzedFiles: 2},
+		Files: []model.FileResult{
+			{Path: "skip.go", Review: model.ReviewDecision{Level: "unnecessary", Reason: "省略候補"}},
+			{Path: "careful.go", Review: model.ReviewDecision{Level: "caution", Reason: "判定の確かさが基準に届かない", Judgments: []model.ReviewJudgment{{ChoiceAnswer: model.ChoiceAnswer{Choice: "unnecessary", Confidence: &c}}}}},
+			{Path: "required.go", Review: model.ReviewDecision{Level: "required", Reason: "未解析"}, Reasons: []string{"api_error"}},
+		}, Checklist: []model.ChecklistItem{{Title: "動作を確認", State: "suggested"}},
+	}
+	for _, format := range []string{"terminal", "markdown", "html"} {
+		t.Run(format, func(t *testing.T) {
+			b, err := Render(r, format, "scan")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := string(b)
+			for _, want := range []string{"必須", "注意", "不要", "58.0%", "Jev: 不要", "Jevから判定を取得できませんでした", "コードが正しい確率ではありません", "一覧を取得できなかった1ファイル", "基準に届かない"} {
+				if !strings.Contains(s, want) {
+					t.Errorf("missing %q", want)
+				}
+			}
+			if !(strings.Index(s, "required.go") < strings.Index(s, "careful.go") && strings.Index(s, "careful.go") < strings.Index(s, "skip.go") && strings.Index(s, "skip.go") < strings.Index(s, "動作を確認")) {
+				t.Fatal("reading order is incorrect")
+			}
+			if format == "html" && (!strings.Contains(s, `<details class="skip-group">`) || strings.Contains(s, `class="skip-group" open`)) {
+				t.Fatal("skip candidates should be collapsed")
+			}
+			if format == "markdown" && !strings.Contains(s, "<summary>不要: 1ファイル") {
+				t.Fatal("missing collapsed skip candidates")
+			}
+		})
+	}
+	s := summarize(r)
+	if s.Required != 2 || s.Caution != 1 || s.Unnecessary != 1 || s.Missing != 1 {
+		t.Fatalf("%+v", s)
+	}
+}
+
+func TestConfidenceShowsRawChoiceAndLowestValue(t *testing.T) {
+	a, b := .98, .20
+	js := []model.ReviewJudgment{{ChoiceAnswer: model.ChoiceAnswer{Choice: "unnecessary", Confidence: &a}}, {ChoiceAnswer: model.ChoiceAnswer{Choice: "required", Confidence: &b}}}
+	if got := confidenceSummary(js); got != "Jev: 判定が混在 / 最低の確信度 20.0%" {
+		t.Fatal(got)
+	}
+	if got := confidenceSummary(nil); got != "Jevの確信度: 未取得" {
+		t.Fatal(got)
+	}
+	if got := percent(.84999); got != "84.9%" {
+		t.Fatal("rounded up past skip threshold", got)
+	}
+}
+
+func TestLegacyNoSignalIsNotUnnecessary(t *testing.T) {
+	s := summarize(model.Result{Files: []model.FileResult{{Path: "old.go", Group: "no_signal"}}})
+	if s.Unnecessary != 0 || s.Caution != 1 || s.Groups[1].Files[0].Confidence != "Jevの確信度: 未取得" {
+		t.Fatalf("%+v", s)
+	}
+}
+
+func TestReviewReasonEscapesAllHumanFormats(t *testing.T) {
+	r := model.Result{Files: []model.FileResult{{Path: "a.go", Review: model.ReviewDecision{Level: "caution", Reason: `<script>alert(1)</script>`}, Tags: []string{`<img src=x>`}}}}
+	for _, format := range []string{"html", "markdown"} {
+		b, err := Render(r, format, "files")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "<script>") || strings.Contains(string(b), "<img src=x>") {
+			t.Fatalf("unescaped output %s", format)
 		}
 	}
 }

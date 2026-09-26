@@ -1,13 +1,33 @@
 # pradar — PRレビュー準備CLI 設計書
 
 - 作成日: 2026-09-25
-- 状態: v0.1実装用の設計案
+- 状態: v0.1設計と確認要否判定の拡張（2026-09-26）
 - 対象: Goで実装するローカルCUIアプリ
 - 外部依存: GitHub CLI（`gh`）、TypeSafe Jev API
 - 認証: 実行ディレクトリの`.env`に`TYPESAFE_API_KEY`が設定済み
 
 > PRのURLを渡すと、「今回確認すべき観点」と「先に読む差分」を返す。
 > バグの有無・安全性・マージ可否を判定するツールではなく、レビューの準備を短縮するツールとする。
+
+## 2026-09-26: 人が読む範囲を絞るための拡張
+
+従来の「読む順番」から、ファイルごとの「確認の要否」を先頭に表示する。
+以下は本書の初版設計に優先する追加仕様で、後続のv0.1記述は既存のChecklist・group・予算などの背景として残す。
+
+- 既存のNoul質問に加え、解析単位ごとに `required / caution / unnecessary` のChoiceを同じリクエストへ追加する。
+- Choiceは実際の変更内容に基づく人の確認要否を判断する。欠陥の有無を保証せず、情報不足は `caution` へ送る。ファイル種別のみで省略しない。
+- 応答の種類、選択肢、confidenceの有無と範囲、確率分布のキー・範囲・合計・選択結果との整合を検証する。不正なバッチの値は採用しない。
+- 未解析は必須。高優先度の既存観点がsuggestedの場合、または1単位でもChoiceがrequiredの場合も必須とする。confidenceが低いrequiredも引き下げない。
+- 既存観点がcandidate以上、Choiceがcaution、confidenceが0.85未満、分割解析、PR本文省略、旧記録にChoiceがない場合は最低でも注意とする。
+- 残ったファイルだけを不要（詳細確認の省略候補）とする。0.85は未校正の初期方針で、正解率ではない。
+- ファイルの最終区分とJevの元の区分を区別して表示する。複数単位のconfidenceは最低値を示し、元の値と行範囲を詳細に残す。Noulにconfidenceという意味を与えない。
+- 表示順は必須、注意、不要。HTMLとMarkdownでは不要を折りたたみ、ターミナルでは簡略表示する。観点・未解析理由は日本語で表示する。
+- `files[].review` に `level / reason / judgments` を追加し、各judgmentに元のChoice・confidence・probabilitiesと対象範囲を保存する。`review_policy` に方針のversionとskip閾値を含める。既存のschema version 1に対する追加フィールドとし、旧 `group` は保持する。
+- 記録の `outcomes[].choices` に元のChoice応答を保存する。旧記録のreplayも可能だが、Choiceを推測せず、不要への分類もしない。
+- 質問数・リクエストサイズの既存予算には追加Choiceも含む。入力超過による分割後もNoulとChoiceを一緒に再送する。
+
+confidenceの意味とHTTP契約は[TypeSafe Confidence](https://docs.typesafe.ai/confidence)と[API reference](https://docs.typesafe.ai/api)に従う。
+閾値の妥当性と確認時間の削減効果は、実PRの人手レビュー結果と比較して評価する。
 
 ---
 

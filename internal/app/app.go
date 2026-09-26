@@ -82,6 +82,7 @@ func Scan(ctx context.Context, ref github.Ref, c config.Config, reader github.Re
 func Aggregate(e Evidence, requestedModel string) model.Result {
 	r := model.Result{SchemaVersion: 1, ToolVersion: model.Version, PR: e.PR, RulesHash: rules.Hash(e.Rules), Warnings: append([]string{}, e.Warnings...)}
 	r.Model.Requested = requestedModel
+	r.ReviewPolicy = model.ReviewPolicy{Version: 1, SkipConfidenceAt: skipConfidenceAt}
 	r.Model.Actual = []string{}
 	r.Scope = model.Scope{FetchedFiles: len(e.Files), AnalysisUnits: len(e.Units), Unanalyzed: []model.Unanalyzed{}, BodyOmitted: e.BodyOmitted}
 	r.Metrics = e.Metrics
@@ -91,6 +92,8 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 		r.ThresholdProfile = append(r.ThresholdProfile, model.RuleThreshold{ID: rule.ID, SuggestAt: rule.SuggestAt, CandidateAt: rule.CandidateAt})
 	}
 	values := map[string]float64{}
+	choices := map[string]model.ChoiceAnswer{}
+	reviewRequested := map[string]bool{}
 	models := map[string]bool{}
 	failed := map[string]string{}
 	var usage model.Usage
@@ -100,8 +103,22 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 			models[o.Model] = true
 			r.Model.Actual = append(r.Model.Actual, o.Model)
 		}
-		for k, v := range o.Values {
-			values[k] = v
+		for id, q := range o.Request.Questions {
+			if q.Type == "choice" {
+				reviewRequested[id] = true
+			}
+		}
+		if o.ErrorCode == "" {
+			for k, v := range o.Values {
+				if v >= 0 && v <= 1 {
+					values[k] = v
+				}
+			}
+			for k, v := range o.Choices {
+				if jev.ValidReviewAnswer(v) {
+					choices[k] = v
+				}
+			}
 		}
 		if o.ErrorCode != "" {
 			for id := range o.Request.Questions {
@@ -150,11 +167,19 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 	for _, f := range e.Files {
 		fileRuleRank[f.Path] = len(e.Rules)
 		fr := model.FileResult{Path: f.Path, PreviousPath: f.PreviousPath, Status: f.Status, Tags: []string{}, Targets: []model.Target{}, Reasons: append([]string{}, f.Reasons...)}
-		unknown := f.PatchState != "complete"
+		unknown := f.PatchState != "complete" || len(f.Units) == 0
 		high := false
 		attention := false
 		for _, uid := range f.Units {
-			u := unitByID[uid]
+			u, exists := unitByID[uid]
+			if !exists {
+				unknown = true
+			}
+			qid := jev.ReviewQuestionID(uid)
+			if _, ok := choices[qid]; !ok && reviewRequested[qid] {
+				unknown = true
+				fr.Reasons = appendUnique(fr.Reasons, "review_unavailable")
+			}
 			if u.FileContextPartial {
 				fr.ContextPartial = true
 			}
@@ -189,23 +214,26 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 		}
 		if fr.Group != "manual" {
 			r.Scope.AnalyzedFiles++
+		} else if len(fr.Reasons) == 0 {
+			fr.Reasons = append(fr.Reasons, "unknown")
 		}
+		fr.Review = reviewDecision(f, fr, choices, unitByID, e.BodyOmitted)
 		for _, reason := range fr.Reasons {
 			r.Scope.Unanalyzed = append(r.Scope.Unanalyzed, model.Unanalyzed{Path: f.Path, Reason: reason})
 		}
 		r.Files = append(r.Files, fr)
 	}
-	if e.PR.ChangedFiles > 0 && len(e.Files) == 0 {
+	if e.PR.ChangedFiles > len(e.Files) {
 		r.Scope.Unanalyzed = append(r.Scope.Unanalyzed, model.Unanalyzed{Path: "*", Reason: "metadata_only"})
 	}
 	if e.PR.ChangedFiles > 100 {
 		r.Scope.Unanalyzed = append(r.Scope.Unanalyzed, model.Unanalyzed{Path: "*", Reason: "file_limit_exceeded"})
 	}
-	order := map[string]int{"manual": 0, "first": 1, "normal": 2, "no_signal": 3}
+	order := map[string]int{"required": 0, "caution": 1, "unnecessary": 2}
 	sort.SliceStable(r.Files, func(i, j int) bool {
 		a, b := r.Files[i], r.Files[j]
-		if order[a.Group] != order[b.Group] {
-			return order[a.Group] < order[b.Group]
+		if order[a.Review.Level] != order[b.Review.Level] {
+			return order[a.Review.Level] < order[b.Review.Level]
 		}
 		if fileRuleRank[a.Path] != fileRuleRank[b.Path] {
 			return fileRuleRank[a.Path] < fileRuleRank[b.Path]
@@ -214,7 +242,7 @@ func Aggregate(e Evidence, requestedModel string) model.Result {
 	})
 	for _, rule := range e.Rules {
 		item := model.ChecklistItem{RuleID: rule.ID, Title: rule.Title, State: "no_signal", Targets: []model.Target{}}
-		if e.PR.ChangedFiles > 100 || (e.PR.ChangedFiles > 0 && len(e.Files) == 0) {
+		if e.PR.ChangedFiles > len(e.Files) {
 			item.Unknown = true
 		}
 		for _, f := range e.Files {
