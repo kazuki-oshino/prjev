@@ -30,6 +30,14 @@ pradar replay --format markdown ./.pradar/run.json
 
 HTMLはCSSを含む単一ファイルです。上記のコマンドで保存した`./.pradar/report.html`をブラウザで開けます。`checklist`、`files`、`replay`でも`--format html`を利用できます。
 
+`just`がある場合は、PRのURLを渡すだけでCLIをビルドし、日時付きのHTMLを生成してブラウザで開けます。
+
+```bash
+just html https://github.com/kazuki-oshino/prjev/pull/1
+```
+
+一部未解析でpradarが終了コード`2`を返しても、HTMLが生成されていれば開きます。保存先は`./.pradar/`で、実行時に表示されます。
+
 フラグは位置引数より前に指定します。`replay`は保存した判定値を再集計し、GitHub・Jevへ接続しません。`--output`と`--record`は既存ファイルを上書きしません。記録にはPR本文と差分が含まれるため、保存先の扱いに注意してください。
 
 終了コードは成功が`0`、致命的エラーが`1`、未解析範囲のある結果が`2`、ユーザー中断が`130`です。進捗とエラーはstderr、結果はstdoutへ出します。
